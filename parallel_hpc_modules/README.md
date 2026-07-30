@@ -14,5 +14,29 @@ Based on the performance bottlenecks summarized from the 2024 NeRF research, thi
 - module_09_project_refactor: Unified code specification & project structure sorting
 - module_10_final_cleanup: Performance test logs & overall speedup comparison
 
-## Compile Rule
-Each module contains independent CMakeLists.txt, can be compiled and run separately.
+## Build Configuration
+Each module contains an independent `CMakeLists.txt` and can be configured, built,
+and run separately. On WSL/Ubuntu with a single-config generator such as Ninja or
+Unix Makefiles, a fresh build directory defaults to `Release` with `-O3 -DNDEBUG`
+for reproducible HPC performance measurements. Existing Release-specific flags are
+preserved; only the optimization level and `NDEBUG` definition are normalized. The
+configuration keeps C++17 and all existing target, dependency, and link definitions
+unchanged.
+
+```bash
+cmake -S module_01_matmul_cpu -B module_01_matmul_cpu/build
+cmake --build module_01_matmul_cpu/build --parallel
+```
+
+To debug a module, explicitly select `Debug` in a separate build directory:
+
+```bash
+cmake -S module_01_matmul_cpu -B module_01_matmul_cpu/build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build module_01_matmul_cpu/build-debug --parallel
+```
+
+For VSCode CMake Tools, an unset build type inherits the CMake default `Release`.
+The build type selected in the extension is treated as explicit input, so select
+`Debug` and reconfigure when debugging is needed. Existing build directories retain
+their cached build type; use a new build directory or pass
+`-DCMAKE_BUILD_TYPE=Release` to convert an earlier Debug configuration.
