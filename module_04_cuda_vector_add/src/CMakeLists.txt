@@ -1,0 +1,2 @@
+add_executable(cuda_vector_add main.cu)
+set_target_properties(cuda_vector_add PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

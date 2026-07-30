@@ -1,0 +1,2 @@
+add_executable(cuda_matmul_naive main.cu)
+set_target_properties(cuda_matmul_naive PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

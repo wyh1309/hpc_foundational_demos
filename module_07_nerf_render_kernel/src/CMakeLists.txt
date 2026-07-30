@@ -1,0 +1,2 @@
+add_executable(nerf_render_kernel main.cu)
+set_target_properties(nerf_render_kernel PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
