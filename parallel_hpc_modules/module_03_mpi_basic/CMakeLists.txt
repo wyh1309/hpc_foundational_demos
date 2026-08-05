@@ -25,6 +25,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|Intel")
     endif()
 endif()
 
-find_package(MPI REQUIRED COMPONENTS CXX)
+find_package(MPI REQUIRED)
 
 add_subdirectory(src)
