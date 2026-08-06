@@ -5,8 +5,8 @@
 #include <mpi.h>
 #include <algorithm>
 
-const int GLOBAL_N = 1024;
-int local_rows;
+
+
 
 void init_matrix(std::vector<double>& mat, int rows, int cols,
                  std::mt19937& gen,
@@ -34,7 +34,7 @@ void serial_block_matmul(
     }
 }
 
-void print_part_matrix(const std::vector<double>& mat, int rows, int cols, int print_rows)
+void print_part_matrix(const std::vector<double>& mat,int cols, int print_rows)
 {
     int slice_len = print_rows * cols;
     auto start = mat.begin();
@@ -49,7 +49,19 @@ void print_part_matrix(const std::vector<double>& mat, int rows, int cols, int p
 
 int main(int argc, char** argv)
 {
+    if (argc < 2)
+    {
+        // 提示用法
+        std::cout << "用法: ./mpi_matmul N" << std::endl;
+        std::cout << "请传入矩阵阶数 N，例如 ./mpi_matmul 16" << std::endl;
+        return 1; // 异常退出
+    }
+
+    // 把字符串参数转成整数
+    int GLOBAL_N = std::atoi(argv[1]);
+    std::cout << "读取到用户输入的矩阵阶数 GLOBAL_N = " << GLOBAL_N << std::endl;
     int rank, world_size;
+    int local_rows;
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -109,7 +121,7 @@ int main(int argc, char** argv)
         double cost = std::chrono::duration<double>(end_time - start_time).count();
 
         std::cout << "time: " << cost << " s" << std::endl;
-        print_part_matrix(C_global, GLOBAL_N, GLOBAL_N, 10);
+
     }
 
     MPI_Finalize();
