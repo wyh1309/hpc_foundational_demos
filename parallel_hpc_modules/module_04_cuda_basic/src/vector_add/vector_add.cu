@@ -46,7 +46,7 @@ __global__ void vector_add_kernel(
     }
 }
 
-// CPU 串行参考计算
+// CPU serial reference calculation
 void cpu_verify(float* h_a, float* h_b, float* h_ref, int n)
 {
     for (int i = 0; i < n; i++)
@@ -62,7 +62,7 @@ int main()
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
-    // ===== Step1: Host 内存分配 & 初始化 =====
+    // ===== Step1: Host memory allocation & initialization =====
     float *h_a, *h_b, *h_c_gpu, *h_ref_cpu;
     h_a       = (float *)malloc(N * sizeof(float));
     h_b       = (float *)malloc(N * sizeof(float));
@@ -75,17 +75,17 @@ int main()
         h_b[i] = dist(gen);
     }
 
-    // ===== Step2: Device 显存分配 =====
+    // ===== Step2: Device memory allocation =====
     float *d_a = nullptr, *d_b = nullptr, *d_c = nullptr;
     CHECK_CUDA_FATAL(cudaMalloc((void**)&d_a, N * sizeof(float)));
     CHECK_CUDA_FATAL(cudaMalloc((void**)&d_b, N * sizeof(float)));
     CHECK_CUDA_FATAL(cudaMalloc((void**)&d_c, N * sizeof(float)));
 
-    // ===== Step3: Host -> Device 拷贝 =====
+    // ===== Step3: Host -> Device copy =====
     CHECK_CUDA_FATAL(cudaMemcpy(d_a, h_a, N*sizeof(float), cudaMemcpyHostToDevice));
     CHECK_CUDA_FATAL(cudaMemcpy(d_b, h_b, N*sizeof(float), cudaMemcpyHostToDevice));
 
-    // ===== Step4: GPU Kernel 计时（cudaEvent） =====
+    // ===== Step4: GPU kernel timing (cudaEvent) =====
     cudaEvent_t start_gpu, stop_gpu;
     CHECK_CUDA_FATAL(cudaEventCreate(&start_gpu));
     CHECK_CUDA_FATAL(cudaEventCreate(&stop_gpu));
@@ -102,16 +102,16 @@ int main()
     float gpu_kernel_ms = 0.0f;
     CHECK_CUDA_FATAL(cudaEventElapsedTime(&gpu_kernel_ms, start_gpu, stop_gpu));
 
-    // ===== Step5: 取回GPU结果到CPU =====
+    // ===== Step5: Copy the GPU result back to the CPU =====
     CHECK_CUDA_FATAL(cudaMemcpy(h_c_gpu, d_c, N*sizeof(float), cudaMemcpyDeviceToHost));
 
-    // ===== Step6: CPU 串行计时（chrono 高精度） =====
+    // ===== Step6: CPU serial timing (high-resolution chrono) =====
     auto cpu_start = std::chrono::high_resolution_clock::now();
     cpu_verify(h_a, h_b, h_ref_cpu, N);
     auto cpu_end = std::chrono::high_resolution_clock::now();
     double cpu_ms = std::chrono::duration_cast<std::chrono::microseconds>(cpu_end - cpu_start).count() / 1000.0;
 
-    // ===== 误差校验 =====
+    // ===== Error verification =====
     bool pass = true;
     const float eps = 1e-5f;
     for (int i = 0; i < N; i++)
@@ -126,13 +126,13 @@ int main()
         }
     }
 
-    // ===== 输出计时与加速比 =====
+    // ===== Output timing and speedup =====
     std::cout << "====================================\n";
     std::cout << "GPU kernel time:    " << gpu_kernel_ms << " ms\n";
     std::cout << "CPU serial time:    " << cpu_ms << " ms\n";
     std::cout << "Speedup (CPU/GPU):  " << cpu_ms / gpu_kernel_ms << " x\n";
 
-    // 计算显存带宽
+    // Calculate memory bandwidth
     double total_bytes = 3.0 * N * sizeof(float); // read a, read b, write c
     double gb = total_bytes / (1024.0*1024.0*1024.0);
     double bw_gbs = gb / (gpu_kernel_ms / 1000.0);
@@ -144,7 +144,7 @@ int main()
     else
         std::cout << "Verification failed!\n";
 
-    // ===== 释放资源 =====
+    // ===== Release resources =====
     CHECK_CUDA_FATAL(cudaEventDestroy(start_gpu));
     CHECK_CUDA_FATAL(cudaEventDestroy(stop_gpu));
 

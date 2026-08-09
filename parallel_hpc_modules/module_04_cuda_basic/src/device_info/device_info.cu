@@ -9,17 +9,17 @@ int main()
 {
     int device_count = 0;
 
-    // TODO: 1. 获取可用GPU数量
+    // TODO: 1. Get the number of available GPUs
     cudaGetDeviceCount(&device_count);
     
 
     for (int dev = 0; dev < device_count; dev++)
     {
         cudaDeviceProp prop;
-        // TODO: 2. 获取对应设备属性
+        // TODO: 2. Get the properties of the corresponding device
         cudaGetDeviceProperties(&prop, dev);
 
-        // TODO: 3. 打印关键参数：SM数量、warp大小、最大block尺寸、显存大小
+        // TODO: 3. Print key parameters: SM count, warp size, maximum block size, and memory size
         std::cout << "==== GPU Device " << dev << " ====" << std::endl;
         std::cout << "==== GPU Name " << prop.name << " ====" << std::endl;
         std::cout << "==== SM Number " << prop.multiProcessorCount << " ====" << std::endl;
