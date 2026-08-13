@@ -4,14 +4,18 @@ project(module_02_matmul_omp LANGUAGES CXX)
 
 # Default build type to optimized Release for single-config generators (Make/Ninja).
 # User specified -DCMAKE_BUILD_TYPE=Debug always overrides this setting.
+message(STATUS "CMAKE_BUILD_TYPE before default: '${CMAKE_BUILD_TYPE}'")
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 endif()
+message(STATUS "CMAKE_BUILD_TYPE after default: '${CMAKE_BUILD_TYPE}'")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/HpcProjectOptions.cmake)
 
 # HPC optimization configuration for Ubuntu/GCC/Clang/Intel compilers.
 # Force -O3 optimization level for Release builds, preserve other existing flags.

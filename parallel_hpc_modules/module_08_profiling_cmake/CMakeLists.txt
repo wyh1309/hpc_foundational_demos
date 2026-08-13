@@ -4,10 +4,12 @@ project(module_08_profiling_cmake LANGUAGES CXX)
 
 # Default to an optimized build for single-config generators (Ninja/Makefiles).
 # An explicit -DCMAKE_BUILD_TYPE=Debug (or another type) always takes precedence.
+message(STATUS "CMAKE_BUILD_TYPE before default: '${CMAKE_BUILD_TYPE}'")
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 endif()
+message(STATUS "CMAKE_BUILD_TYPE after default: '${CMAKE_BUILD_TYPE}'")
 
 # WSL/Ubuntu HPC benchmark configuration: retain custom flags while enforcing O3.
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|Intel")
@@ -21,6 +23,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|Intel")
     endif()
 endif()
 
-include(cmake/HpcProjectOptions.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/HpcProjectOptions.cmake)
 
 add_subdirectory(src)

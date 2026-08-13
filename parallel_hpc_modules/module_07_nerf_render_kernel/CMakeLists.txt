@@ -4,15 +4,19 @@ project(module_07_nerf_render_kernel LANGUAGES CXX CUDA)
 
 # Default to an optimized build for single-config generators (Ninja/Makefiles).
 # An explicit -DCMAKE_BUILD_TYPE=Debug (or another type) always takes precedence.
+message(STATUS "CMAKE_BUILD_TYPE before default: '${CMAKE_BUILD_TYPE}'")
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 endif()
+message(STATUS "CMAKE_BUILD_TYPE after default: '${CMAKE_BUILD_TYPE}'")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/HpcProjectOptions.cmake)
 
 # WSL/Ubuntu HPC benchmark configuration: retain custom flags while enforcing O3.
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|Intel")
