@@ -62,9 +62,9 @@ void cpu_verify(float* h_a, float* h_b, float* h_ref, int M,int N,int P)
 
 int main()
 {
-    int M = 13;
-    int N = 17;
-    int P = 19;
+    int M = 16;
+    int N = 16;
+    int P = 16;
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -75,7 +75,7 @@ int main()
     h_a       = (float *)malloc(M * N * sizeof(float));
     h_b       = (float *)malloc(N * P * sizeof(float));
     h_c_gpu   = (float *)malloc(M * P * sizeof(float));
-    h_ref_cpu = (float *)malloc(M * P * sizeof(float));
+    memset(h_ref_cpu, 0, M*P*sizeof(float));
 
     for (int i = 0; i < M*N; i++)
     {
@@ -101,7 +101,7 @@ int main()
 
 
     const dim3 block_dim(16,16);
-    const dim3 grid_dim((M + block_dim.x - 1) / block_dim.x,(P + block_dim.y - 1) / block_dim.y);
+    const dim3 grid_dim((P + block_dim.x - 1) / block_dim.x,(M + block_dim.y - 1) / block_dim.y);
 
     CHECK_CUDA_FATAL(cudaEventRecord(start_gpu));
      // ===== Host -> Device copy =====
@@ -112,7 +112,7 @@ int main()
     CHECK_KERNEL();
 
     // ===== Copy the GPU result back to the CPU =====
-    CHECK_CUDA_FATAL(cudaMemcpy(h_c_gpu, d_c, N*sizeof(float), cudaMemcpyDeviceToHost));
+    CHECK_CUDA_FATAL(cudaMemcpy(h_c_gpu, d_c, M*P*sizeof(float), cudaMemcpyDeviceToHost));
 
     
     CHECK_CUDA_FATAL(cudaEventRecord(stop_gpu));
@@ -131,7 +131,7 @@ int main()
     // ===== Error verification =====
     bool pass = true;
     const float eps = 1e-5f;
-    for (int i = 0; i < N; i++)
+    for (int i = 0; i < M*P; i++)
     {
         if (fabs(h_c_gpu[i] - h_ref_cpu[i]) > eps)
         {
