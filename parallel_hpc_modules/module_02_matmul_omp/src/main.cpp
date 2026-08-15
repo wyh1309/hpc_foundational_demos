@@ -62,7 +62,7 @@ void matmul_omp_tiled(double *A, double *B, double *C)
                         {
                             tmp += A[i*N + k] * B[k*N + j];
                         }
-                        C[i*N + j] = tmp;
+                        C[i*N + j] += tmp;
                     }
                 }
             }
