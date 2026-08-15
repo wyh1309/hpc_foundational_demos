@@ -75,6 +75,7 @@ int main()
     h_a       = (float *)malloc(M * N * sizeof(float));
     h_b       = (float *)malloc(N * P * sizeof(float));
     h_c_gpu   = (float *)malloc(M * P * sizeof(float));
+    h_ref_cpu = (float*)malloc(M * P * sizeof(float));
     memset(h_ref_cpu, 0, M*P*sizeof(float));
 
     for (int i = 0; i < M*N; i++)
