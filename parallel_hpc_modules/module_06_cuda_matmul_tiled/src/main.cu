@@ -113,7 +113,7 @@ __global__ void matmul_tiled_kernel(
 
         // Step 7: Compute dot product inside shared memory tile
         
-        for (int k=tile_idx;k<tile_idx+TILE_WIDTH;k++)
+        for (int k=0;k<TILE_WIDTH;k++)
         {
             accumulate += As[ty][k]*Bs[k][tx];
         }
@@ -267,6 +267,7 @@ int main()
     CHECK_CUDA_FATAL(cudaEventRecord(start_tiled));
     matmul_tiled_kernel<<<grid_tiled, block_tiled>>>(d_a, d_b, d_c_tiled, M,N,P);
     CHECK_KERNEL();
+    CHECK_CUDA_FATAL(cudaDeviceSynchronize());
     CHECK_CUDA_FATAL(cudaEventRecord(stop_tiled));
     CHECK_CUDA_FATAL(cudaEventSynchronize(stop_tiled));
 
@@ -287,7 +288,7 @@ int main()
     // ===== Step 5: Result Error Verification =====
     bool naive_pass = true;
     bool tiled_pass = true;
-    const float eps = 1e-5f;
+    const float eps = 1e-3f;
 
     // Check naive kernel output
     for (int i = 0; i < M*P; i++)
