@@ -182,6 +182,9 @@ void cpu_verify(float* h_a, float* h_b, float* h_ref, int M,int N,int P)
 int main()
 {
     // Modify matrix dimensions here
+    // int M = 997;
+    // int N = 997;
+    // int P = 997;
     int M = 1024;
     int N = 1024;
     int P = 1024;
@@ -227,12 +230,19 @@ int main()
 
 
     // ===== Step 3: Create CUDA Event Timers for GPU Runtime Measurement =====
-    cudaEvent_t start_naive, stop_naive;
-    cudaEvent_t start_tiled, stop_tiled;
-    CHECK_CUDA_FATAL(cudaEventCreate(&start_naive));
-    CHECK_CUDA_FATAL(cudaEventCreate(&stop_naive));
-    CHECK_CUDA_FATAL(cudaEventCreate(&start_tiled));
-    CHECK_CUDA_FATAL(cudaEventCreate(&stop_tiled));
+    cudaEvent_t start_naive_k, stop_naive_k;
+    cudaEvent_t start_tiled_k, stop_tiled_k;
+    cudaEvent_t start_naive_e2e, stop_naive_e2e;
+    cudaEvent_t start_tiled_e2e, stop_tiled_e2e;
+
+    CHECK_CUDA_FATAL(cudaEventCreate(&start_naive_k));
+    CHECK_CUDA_FATAL(cudaEventCreate(&stop_naive_k));
+    CHECK_CUDA_FATAL(cudaEventCreate(&start_tiled_k));
+    CHECK_CUDA_FATAL(cudaEventCreate(&stop_tiled_k));
+    CHECK_CUDA_FATAL(cudaEventCreate(&start_naive_e2e));
+    CHECK_CUDA_FATAL(cudaEventCreate(&stop_naive_e2e));
+    CHECK_CUDA_FATAL(cudaEventCreate(&start_tiled_e2e));
+    CHECK_CUDA_FATAL(cudaEventCreate(&stop_tiled_e2e));
 
 
     // Kernel execution configuration for naive matmul
@@ -249,32 +259,46 @@ int main()
         (M + TILE_WIDTH - 1) / TILE_WIDTH
     );
 
+    float naive_kernel_ms = 0.0f;
+    float naive_e2e_ms = 0.0f;
+    float tiled_kernel_ms = 0.0f;
+    float tiled_e2e_ms = 0.0f;
 
-    // ---------------------- Run Naive GPU Kernel & Record Time ----------------------
-    CHECK_CUDA_FATAL(cudaEventRecord(start_naive));
+
+    // ---------------------- Naive GPU: End‑to‑end (H2D already done, kernel + D2H) ----------------------
+    CHECK_CUDA_FATAL(cudaEventRecord(start_naive_e2e));
+
+    CHECK_CUDA_FATAL(cudaEventRecord(start_naive_k));
     matmul_naive_kernel<<<grid_naive, block_naive>>>(d_a, d_b, d_c_naive, M,N,P);
     CHECK_KERNEL();
-    CHECK_CUDA_FATAL(cudaEventRecord(stop_naive));
-    CHECK_CUDA_FATAL(cudaEventSynchronize(stop_naive));
+    CHECK_CUDA_FATAL(cudaDeviceSynchronize());
+    CHECK_CUDA_FATAL(cudaEventRecord(stop_naive_k));
+    CHECK_CUDA_FATAL(cudaEventSynchronize(stop_naive_k));
+    CHECK_CUDA_FATAL(cudaEventElapsedTime(&naive_kernel_ms, start_naive_k, stop_naive_k));
 
-    float naive_ms = 0.0f;
-    CHECK_CUDA_FATAL(cudaEventElapsedTime(&naive_ms, start_naive, stop_naive));
     CHECK_CUDA_FATAL(cudaMemcpy(h_c_naive, d_c_naive, M*P*sizeof(float), cudaMemcpyDeviceToHost));
 
+    CHECK_CUDA_FATAL(cudaEventRecord(stop_naive_e2e));
+    CHECK_CUDA_FATAL(cudaEventSynchronize(stop_naive_e2e));
+    CHECK_CUDA_FATAL(cudaEventElapsedTime(&naive_e2e_ms, start_naive_e2e, stop_naive_e2e));
 
 
-    // ---------------------- Run Tiled Shared Memory GPU Kernel & Record Time ----------------------
-    CHECK_CUDA_FATAL(cudaEventRecord(start_tiled));
+    // ---------------------- Tiled GPU: End‑to‑end (kernel + D2H) ----------------------
+    CHECK_CUDA_FATAL(cudaEventRecord(start_tiled_e2e));
+
+    CHECK_CUDA_FATAL(cudaEventRecord(start_tiled_k));
     matmul_tiled_kernel<<<grid_tiled, block_tiled>>>(d_a, d_b, d_c_tiled, M,N,P);
     CHECK_KERNEL();
     CHECK_CUDA_FATAL(cudaDeviceSynchronize());
-    CHECK_CUDA_FATAL(cudaEventRecord(stop_tiled));
-    CHECK_CUDA_FATAL(cudaEventSynchronize(stop_tiled));
+    CHECK_CUDA_FATAL(cudaEventRecord(stop_tiled_k));
+    CHECK_CUDA_FATAL(cudaEventSynchronize(stop_tiled_k));
+    CHECK_CUDA_FATAL(cudaEventElapsedTime(&tiled_kernel_ms, start_tiled_k, stop_tiled_k));
 
-    float tiled_ms = 0.0f;
-    CHECK_CUDA_FATAL(cudaEventElapsedTime(&tiled_ms, start_tiled, stop_tiled));
     CHECK_CUDA_FATAL(cudaMemcpy(h_c_tiled, d_c_tiled, M*P*sizeof(float), cudaMemcpyDeviceToHost));
 
+    CHECK_CUDA_FATAL(cudaEventRecord(stop_tiled_e2e));
+    CHECK_CUDA_FATAL(cudaEventSynchronize(stop_tiled_e2e));
+    CHECK_CUDA_FATAL(cudaEventElapsedTime(&tiled_e2e_ms, start_tiled_e2e, stop_tiled_e2e));
 
 
     // ===== Step 4: Run CPU Serial Calculation & Timing =====
@@ -323,23 +347,36 @@ int main()
     std::cout << "Matrix Size: M=" << M << " N=" << N << " P=" << P << "\n";
     std::cout << "Tile Width:  " << TILE_WIDTH << "\n";
     std::cout << "---------------------------------------------\n";
-    std::cout << "CPU Serial Time:      " << cpu_ms << " ms\n";
-    std::cout << "Naive GPU Time:       " << naive_ms << " ms | Valid: " << (naive_pass ? "YES" : "NO") << "\n";
-    std::cout << "Tiled Shared GPU Time:" << tiled_ms << " ms | Valid: " << (tiled_pass ? "YES" : "NO") << "\n";
+    std::cout << "CPU Serial Time:            " << cpu_ms << " ms\n";
     std::cout << "---------------------------------------------\n";
-    std::cout << "Speedup CPU / Naive GPU:   " << cpu_ms / naive_ms << " x\n";
-    std::cout << "Speedup CPU / Tiled GPU:   " << cpu_ms / tiled_ms << " x\n";
-    std::cout << "Speedup Tiled / Naive GPU: " << naive_ms / tiled_ms << " x\n";
+    std::cout << "[GPU Kernel‑Only Time (pure compute)]\n";
+    std::cout << "Naive GPU Kernel:           " << naive_kernel_ms << " ms | Valid: " << (naive_pass ? "YES" : "NO") << "\n";
+    std::cout << "Tiled Shared GPU Kernel:    " << tiled_kernel_ms << " ms | Valid: " << (tiled_pass ? "YES" : "NO") << "\n";
+    std::cout << "---------------------------------------------\n";
+    std::cout << "[GPU End‑to‑End Time (kernel + DtoH copy)]\n";
+    std::cout << "Naive GPU E2E:              " << naive_e2e_ms << " ms\n";
+    std::cout << "Tiled Shared GPU E2E:       " << tiled_e2e_ms << " ms\n";
+    std::cout << "---------------------------------------------\n";
+    std::cout << "Speedup CPU / Naive(Kernel):    " << cpu_ms / naive_kernel_ms << " x\n";
+    std::cout << "Speedup CPU / Tiled(Kernel):    " << cpu_ms / tiled_kernel_ms << " x\n";
+    std::cout << "Speedup Tiled / Naive(Kernel):  " << naive_kernel_ms / tiled_kernel_ms << " x\n";
+    std::cout << "---------------------------------------------\n";
+    std::cout << "Speedup CPU / Naive(E2E):       " << cpu_ms / naive_e2e_ms << " x\n";
+    std::cout << "Speedup CPU / Tiled(E2E):       " << cpu_ms / tiled_e2e_ms << " x\n";
     std::cout << "=============================================\n";
 
 
 
     // ===== Step 7: Release All Allocated Resources =====
     // Destroy CUDA timer events
-    CHECK_CUDA_FATAL(cudaEventDestroy(start_naive));
-    CHECK_CUDA_FATAL(cudaEventDestroy(stop_naive));
-    CHECK_CUDA_FATAL(cudaEventDestroy(start_tiled));
-    CHECK_CUDA_FATAL(cudaEventDestroy(stop_tiled));
+    CHECK_CUDA_FATAL(cudaEventDestroy(start_naive_k));
+    CHECK_CUDA_FATAL(cudaEventDestroy(stop_naive_k));
+    CHECK_CUDA_FATAL(cudaEventDestroy(start_tiled_k));
+    CHECK_CUDA_FATAL(cudaEventDestroy(stop_tiled_k));
+    CHECK_CUDA_FATAL(cudaEventDestroy(start_naive_e2e));
+    CHECK_CUDA_FATAL(cudaEventDestroy(stop_naive_e2e));
+    CHECK_CUDA_FATAL(cudaEventDestroy(start_tiled_e2e));
+    CHECK_CUDA_FATAL(cudaEventDestroy(stop_tiled_e2e));
 
     // Free GPU device memory
     CHECK_CUDA_FATAL(cudaFree(d_a));
