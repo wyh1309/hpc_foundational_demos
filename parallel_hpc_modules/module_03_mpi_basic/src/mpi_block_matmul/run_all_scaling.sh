@@ -3,13 +3,14 @@
 set -e
 
 # ====================== Configuration; edit as needed ======================
-EXE="./mpi_matmul_scaling"
+EXE="./mpi_block_matmul"
 HOSTFILE="/root/mpi-hosts"
 STRONG_N=4096
 WEAK_LOCAL_ROWS=1024
 
 # Common MPI network parameters
 MPI_COMMON_OPTS="\
+--allow-run-as-root \
 --bind-to none \
 --mca oob_tcp_if_include 192.168.1.0/24 \
 --mca btl_tcp_if_include 192.168.1.0/24 \
@@ -24,13 +25,18 @@ function run_single_node {
     # strong scaling: np 1 2 4
     for p in 1 2 4; do
         echo "  run strong np=$p"
-        mpirun -np ${p} ${EXE} strong ${STRONG_N} >> strong_single.csv
+        if [ "${p}" -eq 1 ]; then
+            mpirun -np 1 ${MPI_COMMON_OPTS} ${EXE} strong ${STRONG_N} > strong_single.csv
+            BASELINE_TIME=$(awk -F, '$1 !~ /mode/ && $2 == 1 {print $5; exit}' strong_single.csv)
+        else
+            mpirun -np ${p} ${MPI_COMMON_OPTS} ${EXE} strong ${STRONG_N} "${BASELINE_TIME}" >> strong_single.csv
+        fi
     done
 
     # weak scaling: np 1 2 4
     for p in 1 2 4; do
         echo "  run weak np=$p"
-        mpirun -np ${p} ${EXE} weak ${WEAK_LOCAL_ROWS} >> weak_single.csv
+        mpirun -np ${p} ${MPI_COMMON_OPTS} ${EXE} weak ${WEAK_LOCAL_ROWS} >> weak_single.csv
     done
     echo "[Single‑node done] output: strong_single.csv weak_single.csv"
 }
@@ -40,20 +46,22 @@ function run_multi_node {
     echo "[MODE] Multi‑node (2‑node) scaling"
     rm -f strong_multi.csv weak_multi.csv
 
-    MPIRUN_BASE="mpirun --allow-run-as-root --hostfile ${HOSTFILE} ${MPI_COMMON_OPTS}"
+    # multi模式追加 hostfile，公共参数已经包含 --allow-run-as-root
+    MPIRUN_BASE="mpirun --hostfile ${HOSTFILE} ${MPI_COMMON_OPTS}"
 
     # strong scaling
-    # np=1: node‑0 only
+    # np=1: node-0 only
     echo "  run strong np=1"
-    ${MPIRUN_BASE} -np 1 --map-by ppr:1:node ${EXE} strong ${STRONG_N} >> strong_multi.csv
+    ${MPIRUN_BASE} -np 1 --map-by ppr:1:node ${EXE} strong ${STRONG_N} > strong_multi.csv
+    BASELINE_TIME=$(awk -F, '$1 !~ /mode/ && $2 == 1 {print $5; exit}' strong_multi.csv)
 
     # np=2: 1 proc per node
     echo "  run strong np=2"
-    ${MPIRUN_BASE} -np 2 --map-by ppr:1:node ${EXE} strong ${STRONG_N} >> strong_multi.csv
+    ${MPIRUN_BASE} -np 2 --map-by ppr:1:node ${EXE} strong ${STRONG_N} "${BASELINE_TIME}" >> strong_multi.csv
 
-    # np=4: 2 proc per node, cross‑node
+    # np=4: 2 proc per node, cross-node
     echo "  run strong np=4"
-    ${MPIRUN_BASE} -np 4 --map-by ppr:2:node ${EXE} strong ${STRONG_N} >> strong_multi.csv
+    ${MPIRUN_BASE} -np 4 --map-by ppr:2:node ${EXE} strong ${STRONG_N} "${BASELINE_TIME}" >> strong_multi.csv
 
     # weak scaling
     echo "  run weak np=1"

@@ -5,6 +5,7 @@
 #include <mpi.h>
 #include <algorithm>
 #include <string>
+#include <cstdlib>
 
 void init_matrix(std::vector<double>& mat, int rows, int cols,
                  std::mt19937& gen,
@@ -51,6 +52,7 @@ int main(int argc, char** argv)
     {
         std::cout << "Usage:\n";
         std::cout << "  Strong scaling: ./mpi_matmul_scaling strong GLOBAL_N\n";
+        std::cout << "  Strong scaling with baseline: ./mpi_matmul_scaling strong GLOBAL_N BASELINE_TIME\n";
         std::cout << "  Weak scaling: ./mpi_matmul_scaling weak LOCAL_ROWS_PER_PROC\n";
         std::cout << "Examples:\n";
         std::cout << "  mpirun -np 4 ./mpi_matmul_scaling strong 1024\n";
@@ -60,6 +62,12 @@ int main(int argc, char** argv)
 
     std::string mode = argv[1];
     int param = std::atoi(argv[2]);
+    // Scaling runs are separate MPI jobs, so the single-process baseline must
+    // be passed explicitly to jobs with more than one process.
+    double baseline_time = -1.0;
+    if (argc >= 4) {
+        baseline_time = std::atof(argv[3]);
+    }
 
     int rank, world_size;
     MPI_Init(&argc, &argv);
@@ -141,21 +149,18 @@ int main(int argc, char** argv)
     // Rank 0 outputs scaling statistics in CSV format.
     if(rank == 0)
     {
-        static double t1_strong = -1.0;
-        static double t1_weak  = -1.0;
         double speedup = 0.0;
         double efficiency = 0.0;
 
         // Store the single-process baseline time.
         if(world_size == 1){
-            if(mode=="strong") t1_strong = wall_time;
-            if(mode=="weak")  t1_weak  = wall_time;
+            baseline_time = wall_time;
         }
 
         if(mode == "strong")
         {
-            if(t1_strong > 1e-12){
-                speedup    = t1_strong / wall_time;
+            if(baseline_time > 1e-12 && wall_time > 1e-12){
+                speedup    = baseline_time / wall_time;
                 efficiency = speedup / world_size;
             }else{
                 speedup = NAN; efficiency = NAN;
