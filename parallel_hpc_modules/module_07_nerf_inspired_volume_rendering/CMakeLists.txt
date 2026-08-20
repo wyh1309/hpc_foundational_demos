@@ -1,9 +1,10 @@
+# CMakeLists.txt for Constant-Parameter Inverse Problem Solver
+
 cmake_minimum_required(VERSION 3.20)
 
-project(module_07_nerf_render_kernel LANGUAGES CXX CUDA)
+project(module_07_nerf_inspired_volume_rendering LANGUAGES CXX CUDA)
 
-# Default to an optimized build for single-config generators (Ninja/Makefiles).
-# An explicit -DCMAKE_BUILD_TYPE=Debug (or another type) always takes precedence.
+# Build type configuration
 message(STATUS "CMAKE_BUILD_TYPE before default: '${CMAKE_BUILD_TYPE}'")
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
@@ -11,14 +12,16 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 endif()
 message(STATUS "CMAKE_BUILD_TYPE after default: '${CMAKE_BUILD_TYPE}'")
 
+# C++ and CUDA standards
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
+# Include HPC project options
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/HpcProjectOptions.cmake)
 
-# WSL/Ubuntu HPC benchmark configuration: retain custom flags while enforcing O3.
+# Enforce O3 optimization for Release builds
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|Intel")
     string(REGEX REPLACE "(^|[ \t])-O[0-3gs]($|[ \t])" "\\1-O3\\2"
         CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
@@ -29,6 +32,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|Intel")
         string(APPEND CMAKE_CXX_FLAGS_RELEASE " -DNDEBUG")
     endif()
 endif()
+
 if(CMAKE_CUDA_COMPILER_ID MATCHES "NVIDIA|Clang")
     string(REGEX REPLACE "(^|[ \t])-O[0-3gs]($|[ \t])" "\\1-O3\\2"
         CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE}")
@@ -40,4 +44,15 @@ if(CMAKE_CUDA_COMPILER_ID MATCHES "NVIDIA|Clang")
     endif()
 endif()
 
+# Global include directory
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# Add source subdirectory
 add_subdirectory(src)
+
+# Testing (optional)
+option(BUILD_TESTS "Build unit tests" OFF)
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

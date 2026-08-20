@@ -15,7 +15,7 @@ Folder: `2024_mit_nerf_research/`
 Folder: `hpc_parallel_modules/`
 10 independent, self-contained practice modules covering multi-threading, distributed computing and GPU optimization:
 - module_01 ~ module_06: CPU baseline, OpenMP multi-threading, MPI communication, naive & tiled CUDA matrix multiplication (memory optimization practice)
-- module_07: Custom CUDA volume rendering kernel optimized for NeRF ray sampling
+- module_07: NeRF-inspired CUDA volume rendering for a parameterized transport equation
 - module_08 ~ module_10: Performance profiling template, unified project refactor & final performance benchmark
 
 ## Environment & Build
