@@ -18,7 +18,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-# Include HPC project options
+# Include shared HPC compiler options from the parent project.
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/HpcProjectOptions.cmake)
 
 # Enforce O3 optimization for Release builds
@@ -47,12 +47,20 @@ endif()
 # Global include directory
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+# Optional targets. These are declared before add_subdirectory(src) so the
+# source-level CMakeLists can use them.
+option(BUILD_TESTS "Build unit tests" OFF)
+option(BUILD_DEMOS "Build demo and benchmark executables" OFF)
+option(BUILD_CUDA_FORWARD "Build the CUDA forward implementation" OFF)
+
 # Add source subdirectory
 add_subdirectory(src)
 
 # Testing (optional)
-option(BUILD_TESTS "Build unit tests" OFF)
-if(BUILD_TESTS)
+if(BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
     enable_testing()
-    add_subdirectory(tests)
+    # Keep test build artifacts alongside the source-level targets.
+    add_subdirectory(tests ${CMAKE_BINARY_DIR}/src/tests)
+elseif(BUILD_TESTS)
+    message(WARNING "BUILD_TESTS is ON, but tests/CMakeLists.txt does not exist yet")
 endif()

@@ -1,25 +1,14 @@
 # Source-level CMakeLists for modular build
 
 # ============================================================================
-# Utility library (data generation, validation, plotting)
-# ============================================================================
-add_library(transport_utils STATIC
-    utils/data_generator.cpp
-    utils/validation.cpp
-    utils/plotting.cpp
-)
-target_include_directories(transport_utils PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-# ============================================================================
 # Forward solver library (CPU + CUDA)
 # ============================================================================
-add_library(forward_solver STATIC
-    forward/cpu_forward.cpp
-    forward/cuda_forward.cu
-)
+set(FORWARD_SOURCES forward/cpu_forward.cpp)
+if(BUILD_CUDA_FORWARD)
+    list(APPEND FORWARD_SOURCES forward/cuda_forward.cu)
+endif()
+
+add_library(forward_solver STATIC ${FORWARD_SOURCES})
 target_include_directories(forward_solver PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -42,65 +31,27 @@ target_include_directories(inverse_solver PUBLIC
 )
 target_link_libraries(inverse_solver PUBLIC
     forward_solver
-    transport_utils
 )
 
-# ============================================================================
-# Demo 1: Forward solver validation
-# ============================================================================
-add_executable(forward_demo
-    demos/forward_demo.cu
-)
-target_link_libraries(forward_demo PRIVATE
-    forward_solver
-    transport_utils
-)
-set_target_properties(forward_demo PROPERTIES
-    CUDA_SEPARABLE_COMPILATION ON
-)
+if(BUILD_DEMOS)
+    function(add_demo_if_ready target source library)
+        file(SIZE "${CMAKE_CURRENT_SOURCE_DIR}/${source}" source_size)
+        if(source_size GREATER 0)
+            add_executable(${target} ${source})
+            target_link_libraries(${target} PRIVATE ${library})
+            set_target_properties(${target} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+        else()
+            message(STATUS "Skipping empty demo source: ${source}")
+        endif()
+    endfunction()
 
-# ============================================================================
-# Demo 2: Inverse problem solver
-# ============================================================================
-add_executable(inverse_demo
-    demos/inverse_demo.cu
-)
-target_link_libraries(inverse_demo PRIVATE
-    inverse_solver
-    forward_solver
-    transport_utils
-)
-set_target_properties(inverse_demo PROPERTIES
-    CUDA_SEPARABLE_COMPILATION ON
-)
+    add_demo_if_ready(forward_demo demos/forward_demo.cu forward_solver)
+    add_demo_if_ready(inverse_demo demos/inverse_demo.cu inverse_solver)
+    add_demo_if_ready(benchmark demos/benchmark.cu forward_solver)
 
-# ============================================================================
-# Demo 3: Performance benchmark
-# ============================================================================
-add_executable(benchmark
-    demos/benchmark.cu
-)
-target_link_libraries(benchmark PRIVATE
-    forward_solver
-    transport_utils
-)
-set_target_properties(benchmark PROPERTIES
-    CUDA_SEPARABLE_COMPILATION ON
-)
-
-# ============================================================================
-# Legacy executable (keep for compatibility)
-# ============================================================================
-add_executable(pde_volume_render
-    main.cu
-    cpu_reference.cpp
-)
-target_include_directories(pde_volume_render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-set_target_properties(pde_volume_render PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-
-# ============================================================================
-# Installation
-# ============================================================================
-install(TARGETS forward_demo inverse_demo benchmark pde_volume_render
-    RUNTIME DESTINATION bin
-)
+    foreach(demo_target forward_demo inverse_demo benchmark)
+        if(TARGET ${demo_target})
+            install(TARGETS ${demo_target} RUNTIME DESTINATION bin)
+        endif()
+    endforeach()
+endif()

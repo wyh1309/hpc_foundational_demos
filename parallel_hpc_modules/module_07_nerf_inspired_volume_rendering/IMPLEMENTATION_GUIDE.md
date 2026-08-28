@@ -1,504 +1,169 @@
 # 实现指南：常数参数逆问题求解器
 
-**本指南仅聚焦方案A（真实实现范围）**
+本指南只描述实现边界、模块职责、开发顺序和验证标准，不提供可直接复制的代码。项目当前聚焦方案 A：一维传输方程的正向求解，以及两个全局常数参数的逆问题。
 
----
+## 1. 实现目标
 
-## 目录
+### 正向问题
 
-1. [数学基础](#1-数学基础)
-2. [正向求解实现](#2-正向求解实现)
-3. [常数参数逆问题](#3-常数参数逆问题)
-4. [实现检查清单](#4-实现检查清单)
-5. [常见问题](#5-常见问题)
+- 输入：采样点上的吸收系数 `sigma`、发射源 `q`、步长 `ds` 和初始强度 `I0`。
+- 输出：射线终点的强度 `I(L)`。
+- 支持：CPU 参考实现、CUDA 并行实现、常数系数解析解。
+- 作用：为逆问题提供预测值，并作为 CPU/CUDA 正确性基准。
 
----
-
-## 1. 数学基础
+### 逆问题
 
-### 1.1 传输方程
-
-一维线性吸收-发射传输方程：
+- 输入：观测强度 `I_obs`、射线长度和初始强度。
+- 待估计参数：全局常数 `sigma >= 0` 与 `q >= 0`。
+- 目标：最小化预测值与观测值之间的平方误差。
+- 方法：网格搜索作为基线，牛顿法作为快速优化方法。
 
-```
-dI(s)/ds = -σ(s)·I(s) + q(s)
-```
+### 明确不在本阶段实现
 
-**物理意义**：
-- `I(s)`: 辐射强度（radiance）
-- `σ(s)`: 吸收系数（absorption coefficient）
-- `q(s)`: 发射源项（emission source）
-- 第一项：介质吸收导致强度衰减
-- 第二项：介质自发光增加强度
-
-### 1.2 常系数解析解
-
-当 `σ, q` 为常数时，积分因子法得到：
-
-```
-I(L) = I₀·exp(-σL) + (q/σ)·(1 - exp(-σL))
-```
-
-**特殊情况**（σ → 0）：
-```
-I(L) = I₀ + q·L
-```
-
-**用途**：验证数值求解器的正确性。
-
-### 1.3 NeRF风格离散化
-
-对于变系数情况，使用欧拉前向法：
-
-```
-I_{i+1} = I_i + Δs·(-σ_i·I_i + q_i)
-       = I_i·(1 - σ_i·Δs) + q_i·Δs
-```
-
-**数值稳定性**：当 `σ·Δs` 较大时，使用精确指数积分：
-
-```
-I_{i+1} = I_i·exp(-σ_i·Δs) + (q_i/σ_i)·(1 - exp(-σ_i·Δs))
-```
-
----
-
-## 2. 正向求解实现
-
-### 2.1 CPU参考实现
-
-**算法伪代码**：
-
-```cpp
-float solve_transport_cpu(
-    const float* sigma,     // [N] 吸收系数
-    const float* q,         // [N] 发射源
-    int N,                  // 采样点数
-    float ds,               // 步长
-    float I0)               // 初始强度
-{
-    float I = I0;
-    for (int i = 0; i < N; i++) {
-        // 精确指数积分（数值稳定）
-        float sigma_ds = sigma[i] * ds;
-        if (sigma_ds < 1e-5f) {
-            // 泰勒展开避免除零
-            I = I + ds * (-sigma[i] * I + q[i]);
-        } else {
-            float exp_term = expf(-sigma_ds);
-            I = I * exp_term + (q[i] / sigma[i]) * (1.0f - exp_term);
-        }
-    }
-    return I;
-}
-```
-
-**关键点**：
-- 使用`expf`（单精度）而非`exp`
-- 小σ情况的泰勒展开
-- 循环内避免分支（性能优化）
-
-### 2.2 CUDA并行实现
-
-**并行策略**：一个线程处理一条射线
-
-```cuda
-__global__ void volume_transport_kernel(
-    const float* sigma,          // [num_rays * N]
-    const float* q,              // [num_rays * N]
-    float* output,               // [num_rays]
-    int num_rays,
-    int N,
-    float ds,
-    float I0)
-{
-    int ray_id = blockIdx.x * blockDim.x + threadIdx.x;
-    if (ray_id >= num_rays) return;
-
-    float I = I0;
-    int offset = ray_id * N;
-
-    for (int i = 0; i < N; i++) {
-        float sigma_val = sigma[offset + i];
-        float q_val = q[offset + i];
-        float sigma_ds = sigma_val * ds;
-
-        // 精确积分
-        if (sigma_ds < 1e-5f) {
-            I += ds * (-sigma_val * I + q_val);
-        } else {
-            float exp_term = expf(-sigma_ds);
-            I = I * exp_term + (q_val / sigma_val) * (1.0f - exp_term);
-        }
-    }
-
-    output[ray_id] = I;
-}
-```
-
-**启动配置**：
-```cpp
-int threads = 256;
-int blocks = (num_rays + threads - 1) / threads;
-volume_transport_kernel<<<blocks, threads>>>(sigma, q, output, num_rays, N, ds, I0);
-```
-
-### 2.3 验证方法
-
-**步骤1**：常系数解析解验证
-```cpp
-// 设置常数参数
-float sigma_const = 0.5f;
-float q_const = 1.0f;
-float L = 10.0f;
-int N = 1000;
-float ds = L / N;
-
-// 数值解
-float I_numerical = solve_transport_cpu(sigma_arr, q_arr, N, ds, I0);
-
-// 解析解
-float I_analytical = I0 * expf(-sigma_const * L)
-                    + (q_const / sigma_const) * (1.0f - expf(-sigma_const * L));
-
-// 相对误差
-float rel_error = fabsf(I_numerical - I_analytical) / fabsf(I_analytical);
-assert(rel_error < 1e-4f);  // 单精度阈值
-```
-
-**步骤2**：CPU vs CUDA一致性
-```cpp
-// RMSE计算
-float rmse = 0.0f;
-for (int i = 0; i < num_rays; i++) {
-    float diff = cpu_output[i] - gpu_output[i];
-    rmse += diff * diff;
-}
-rmse = sqrtf(rmse / num_rays);
-assert(rmse < 1e-5f);
-```
-
----
-
-## 3. 常数参数逆问题
-
-### 3.1 问题定义
-
-**给定**：
-- 观测数据 `I_obs`（可能含噪声）
-- 初始强度 `I₀`
-- 射线长度 `L`
-
-**求解**：
-- 常数参数 `σ, q` 使得 `I_computed(σ, q)` 最接近 `I_obs`
-
-**损失函数**：
-```
-L(σ, q) = (1/2)·(I_computed(σ, q) - I_obs)²
-```
-
-**约束**：
-- `σ ≥ 0`（吸收系数非负）
-- `q ≥ 0`（发射源非负）
-
-### 3.2 合成数据生成
-
-```cpp
-struct SyntheticData {
-    float sigma_true;
-    float q_true;
-    float I_obs;
-    float noise_level;
-};
-
-SyntheticData generate_data(float sigma_gt, float q_gt, float noise_std) {
-    // 正向求解得到清洁观测
-    float I_clean = solve_transport_analytical(sigma_gt, q_gt, L, I0);
-
-    // 添加高斯噪声
-    std::normal_distribution<float> dist(0.0f, noise_std);
-    float noise = dist(rng);
-    float I_obs = I_clean + noise;
-
-    return {sigma_gt, q_gt, I_obs, noise_std};
-}
-```
-
-### 3.3 网格搜索优化
-
-**算法**：暴力枚举参数空间，找到最小损失
-
-```cpp
-struct GridSearchResult {
-    float sigma_opt;
-    float q_opt;
-    float loss_min;
-};
-
-GridSearchResult grid_search(
-    float I_obs,
-    float sigma_min, float sigma_max, int sigma_steps,
-    float q_min, float q_max, int q_steps)
-{
-    float loss_min = INFINITY;
-    float sigma_opt = 0.0f, q_opt = 0.0f;
-
-    for (int i = 0; i < sigma_steps; i++) {
-        float sigma = sigma_min + i * (sigma_max - sigma_min) / sigma_steps;
-
-        for (int j = 0; j < q_steps; j++) {
-            float q = q_min + j * (q_max - q_min) / q_steps;
-
-            // 正向求解
-            float I_pred = solve_transport_analytical(sigma, q, L, I0);
-
-            // 损失计算
-            float loss = 0.5f * (I_pred - I_obs) * (I_pred - I_obs);
-
-            if (loss < loss_min) {
-                loss_min = loss;
-                sigma_opt = sigma;
-                q_opt = q;
-            }
-        }
-    }
-
-    return {sigma_opt, q_opt, loss_min};
-}
-```
-
-**复杂度**：O(N_σ × N_q × N_samples)
-
-**优点**：
-- 实现简单
-- 全局搜索，不会陷入局部最优
-- 可可视化损失地形
-
-**缺点**：
-- 计算量大（参数空间指数增长）
-- 精度受网格分辨率限制
-
-### 3.4 牛顿法优化
-
-**解析导数推导**：
-
-对于常系数解析解：
-```
-I(σ, q) = I₀·exp(-σL) + (q/σ)·(1 - exp(-σL))
-```
-
-损失函数：
-```
-L(σ, q) = (1/2)·(I(σ, q) - I_obs)²
-```
-
-**一阶导数**（链式法则）：
-```
-∂L/∂σ = (I - I_obs) · ∂I/∂σ
-∂L/∂q = (I - I_obs) · ∂I/∂q
-```
-
-其中：
-```
-∂I/∂σ = -I₀·L·exp(-σL) - (q/σ²)·(1 - exp(-σL)) + (q/σ)·L·exp(-σL)
-∂I/∂q = (1/σ)·(1 - exp(-σL))
-```
-
-**二阶导数**（海森矩阵）：
-```
-∂²L/∂σ² = (∂I/∂σ)² + (I - I_obs)·∂²I/∂σ²
-∂²L/∂q² = (∂I/∂q)²
-∂²L/∂σ∂q = ∂I/∂σ · ∂I/∂q + (I - I_obs)·∂²I/∂σ∂q
-```
-
-**牛顿法更新**：
-```
-[σ_{k+1}]   [σ_k]       [∂²L/∂σ²    ∂²L/∂σ∂q]^{-1}  [∂L/∂σ]
-[q_{k+1}] = [q_k] - H^{-1}·g = [              ] · [ ]
-                                 [∂²L/∂σ∂q  ∂²L/∂q²]     [∂L/∂q]
-```
-
-**算法伪代码**：
-
-```cpp
-struct NewtonResult {
-    float sigma;
-    float q;
-    int iterations;
-    bool converged;
-};
-
-NewtonResult newton_method(
-    float I_obs,
-    float sigma_init, float q_init,
-    int max_iter = 100,
-    float tol = 1e-6f)
-{
-    float sigma = sigma_init;
-    float q = q_init;
-
-    for (int iter = 0; iter < max_iter; iter++) {
-        // 正向求解
-        float I = solve_transport_analytical(sigma, q, L, I0);
-        float residual = I - I_obs;
-
-        // 一阶导数
-        float dI_dsigma = compute_dI_dsigma(sigma, q, L, I0);
-        float dI_dq = compute_dI_dq(sigma, q, L, I0);
-        float grad_sigma = residual * dI_dsigma;
-        float grad_q = residual * dI_dq;
-
-        // 收敛检查
-        float grad_norm = sqrtf(grad_sigma*grad_sigma + grad_q*grad_q);
-        if (grad_norm < tol) {
-            return {sigma, q, iter, true};
-        }
-
-        // 二阶导数（海森矩阵）
-        float H_ss = dI_dsigma * dI_dsigma;  // 高斯-牛顿近似
-        float H_qq = dI_dq * dI_dq;
-        float H_sq = dI_dsigma * dI_dq;
-
-        // 求解线性系统 H·delta = -grad
-        float det = H_ss * H_qq - H_sq * H_sq;
-        float delta_sigma = (-grad_sigma * H_qq + grad_q * H_sq) / det;
-        float delta_q = (grad_sigma * H_sq - grad_q * H_ss) / det;
-
-        // 更新参数（带步长控制）
-        float alpha = 1.0f;  // 可用line search优化
-        sigma += alpha * delta_sigma;
-        q += alpha * delta_q;
-
-        // 投影到可行域
-        sigma = fmaxf(sigma, 0.0f);
-        q = fmaxf(q, 0.0f);
-    }
-
-    return {sigma, q, max_iter, false};  // 未收敛
-}
-```
-
-**优点**：
-- 收敛快（二次收敛）
-- 精度高
-- 适合实时应用
-
-**缺点**：
-- 需要初值（可用网格搜索粗搜）
-- 可能陷入局部最优
-- 海森矩阵计算复杂
-
----
-
-## 4. 实现检查清单
-
-### Phase 1: 正向求解 ✓
-
-- [ ] CPU实现：欧拉法 + 精确指数积分
-- [ ] 常系数解析解验证（误差 < 1e-4）
-- [ ] 变系数数值求解
-- [ ] CUDA kernel实现
-- [ ] CPU vs CUDA误差对齐（RMSE < 1e-5）
-- [ ] 性能benchmark（加速比 > 10x）
-- [ ] 步长收敛性测试
-
-### Phase 2: 网格搜索
-
-- [ ] 合成数据生成器
-- [ ] 网格搜索实现
-- [ ] 损失地形可视化（2D热图）
-- [ ] 参数恢复实验（无噪声）
-- [ ] 噪声鲁棒性测试（不同SNR）
-
-### Phase 3: 牛顿法
-
-- [ ] 解析导数推导（纸笔验证）
-- [ ] 一阶导数实现
-- [ ] 数值导数验证（有限差分对比）
-- [ ] 二阶导数（海森矩阵）
-- [ ] 牛顿法迭代
-- [ ] 收敛速度对比（vs 网格搜索）
-- [ ] 初值敏感性分析
-
-### Phase 4: 验证与实验
-
-- [ ] 多组ground truth测试
-- [ ] 噪声水平扫描（0%, 1%, 5%, 10%）
-- [ ] 初值扫描（不同起点）
-- [ ] 参数非负约束验证
-- [ ] 完整实验报告
-- [ ] 结果可视化脚本
-
----
-
-## 5. 常见问题
-
-### Q1: 如何验证解析导数正确性？
-
-**A**: 使用有限差分法：
-
-```cpp
-float numerical_gradient_sigma(float sigma, float q, float epsilon = 1e-5f) {
-    float I_plus = solve_transport_analytical(sigma + epsilon, q, L, I0);
-    float I_minus = solve_transport_analytical(sigma - epsilon, q, L, I0);
-    return (I_plus - I_minus) / (2.0f * epsilon);
-}
-
-// 验证
-float analytical_grad = compute_dI_dsigma(sigma, q, L, I0);
-float numerical_grad = numerical_gradient_sigma(sigma, q);
-float relative_error = fabs(analytical_grad - numerical_grad) / fabs(analytical_grad);
-assert(relative_error < 1e-3f);  // 数值导数精度较低
-```
-
-### Q2: 牛顿法不收敛怎么办？
-
-**A**:
-1. 检查初值是否合理（用网格搜索找粗解）
-2. 添加步长控制（backtracking line search）
-3. 使用阻尼牛顿法：`param += damping * delta`
-4. 检查海森矩阵是否正定（可用BFGS近似）
-
-### Q3: 如何选择网格搜索范围？
-
-**A**:
-- 物理先验：σ ∈ [0, 10]，q ∈ [0, 10]
-- 如果完全未知，先粗网格探索，再细化
-- 可视化损失地形找合理范围
-
-### Q4: 常数参数能恢复到什么精度？
-
-**A**:
-- 无噪声：相对误差 < 0.1%
-- 1% 噪声：相对误差 ~ 1-2%
-- 10% 噪声：相对误差 ~ 10-20%
-- 精度主要受噪声限制，不是算法限制
-
----
-
-## 附录：核心公式速查
-
-**正向求解（常系数）**：
-```
-I(L) = I₀·exp(-σL) + (q/σ)·(1 - exp(-σL))
-```
-
-**损失函数**：
-```
-L(σ, q) = (1/2)·(I(σ, q) - I_obs)²
-```
-
-**解析梯度**：
-```
-∂I/∂σ = -I₀·L·exp(-σL) - (q/σ²)·(1 - exp(-σL)) + (q/σ)·L·exp(-σL)
-∂I/∂q = (1/σ)·(1 - exp(-σL))
-```
-
-**牛顿更新**：
-```
-θ_{k+1} = θ_k - H^{-1}·∇L
-```
-
----
-
-**下一步**：开始实现 `src/forward/cpu_forward.cpp`！
+- 空间变化参数的逐点反演。
+- 伴随变量法、Adam/SGD 和通用自动微分框架。
+- 真实多视角数据、二维/三维场景和复杂正则化。
+
+## 2. 数学接口
+
+### 传输模型
+
+使用一维线性吸收-发射方程：
+
+`dI/ds = -sigma(s) * I + q(s)`
+
+常数参数的解析解用于测试：
+
+`I(L) = I0 * exp(-sigma * L) + q / sigma * (1 - exp(-sigma * L))`
+
+当 `sigma` 接近零时，使用对应的极限形式，避免数值除零。
+
+### 离散化策略
+
+- 对变系数输入，沿射线逐段更新强度。
+- 默认采用指数积分，以改善较大 `sigma * ds` 下的稳定性。
+- 小吸收系数区域需要单独处理，保证连续性和数值稳定性。
+- CPU 与 CUDA 必须使用相同的离散化约定、数据布局和边界处理。
+
+## 3. 模块实现大纲
+
+### 3.1 CPU 正向求解器
+
+对应：`src/forward/cpu_forward.cpp/.hpp`
+
+- 定义清晰的输入输出接口和采样点布局。
+- 实现沿射线的顺序积分。
+- 覆盖常数系数、变系数和 `sigma` 接近零的情况。
+- 将解析解作为独立参考，不与数值实现混用。
+
+### 3.2 CUDA 正向求解器
+
+对应：`src/forward/cuda_forward.cu/.cuh`
+
+- 采用“一条射线对应一个线程”的并行映射。
+- 线程内部顺序遍历该射线的采样区间。
+- 处理越界线程、连续内存访问和 kernel 错误检查。
+- 明确 host/device 内存分配、拷贝和同步边界。
+
+### 3.3 合成数据与验证工具
+
+对应：`tests/`、`src/utils/`、`scripts/`
+
+- 用解析解生成无噪声观测，再按指定噪声水平生成带噪声观测。
+- 提供绝对误差、相对误差和 RMSE 等统一指标。
+- 固定随机种子，记录参数、步长、噪声和运行配置。
+- 将数值结果、性能数据和损失地形输出为可复现实验文件。
+
+### 3.4 网格搜索
+
+对应：`src/inverse/grid_search.cpp/.hpp`
+
+- 先确定 `sigma`、`q` 的合法范围和采样分辨率。
+- 遍历二维参数网格，调用正向模型计算损失。
+- 保存最优参数、最小损失和必要的损失地形数据。
+- 用作稳定的全局基线，不把网格分辨率误认为参数精度。
+
+### 3.5 牛顿法
+
+对应：`src/inverse/newton_method.cpp/.hpp`、`docs/mathematical_derivation.md`
+
+- 根据解析正向模型推导参数梯度和必要的二阶信息。
+- 先用有限差分检查导数，再接入迭代器。
+- 每轮执行：正向预测、残差计算、梯度/近似海森矩阵计算、线性系统求解和参数更新。
+- 对参数施加非负约束，并处理奇异海森矩阵、过大步长和不收敛情况。
+- 记录迭代次数、损失、梯度范数、参数轨迹和收敛状态。
+
+## 4. 开发顺序
+
+### 阶段一：正向模型
+
+- 完成 CPU 参考求解器。
+- 用常数系数解析解检查结果。
+- 增加变系数输入和步长收敛测试。
+- 完成 CUDA 版本，并与 CPU 结果对齐。
+
+### 阶段二：逆问题基线
+
+- 完成合成数据生成和统一误差指标。
+- 完成二维网格搜索。
+- 检查无噪声参数恢复，并观察损失地形。
+- 扫描噪声水平，评估估计结果的稳定性。
+
+### 阶段三：快速优化
+
+- 完成解析导数推导和有限差分校验。
+- 实现带约束和停止条件的牛顿法。
+- 对比网格搜索与牛顿法的精度、迭代次数和运行时间。
+- 测试不同初值对收敛结果的影响。
+
+### 阶段四：实验整理
+
+- 汇总多组真实参数、步长和噪声配置。
+- 输出参数误差、预测误差、收敛曲线和性能对比。
+- 检查所有实验是否可通过脚本重复运行。
+- 在 README 或实验报告中明确实现范围与限制。
+
+## 5. 验收标准
+
+### 正确性
+
+- 常数系数数值结果与解析解的相对误差达到单精度测试阈值。
+- CPU 与 CUDA 对同一输入的 RMSE 达到预设阈值。
+- `sigma` 和 `q` 的非负约束始终有效。
+- `sigma` 接近零时结果连续且无异常值。
+
+### 逆问题
+
+- 无噪声数据能够恢复到网格分辨率或优化器容差允许的范围。
+- 带噪声数据的结果、损失和误差随噪声水平变化合理。
+- 牛顿法记录明确的收敛或失败状态，不静默返回无效结果。
+- 导数通过有限差分检查后再用于优化。
+
+### 工程质量
+
+- 测试、演示程序和 benchmark 使用统一接口。
+- 实验配置和随机种子可追溯。
+- CUDA 错误、内存错误和非法输入有明确处理。
+- 文档中的实现范围与仓库实际代码保持一致。
+
+## 6. 文件对应关系
+
+| 内容 | 位置 |
+| --- | --- |
+| CPU/CUDA 正向求解 | `src/forward/` |
+| 网格搜索 | `src/inverse/grid_search.*` |
+| 牛顿法 | `src/inverse/newton_method.*` |
+| 单元测试 | `tests/` |
+| 演示与性能测试 | `src/demos/` |
+| 实验脚本 | `scripts/` |
+| 数学推导 | `docs/mathematical_derivation.md` |
+| 实验规范 | `docs/experiment_protocol.md` |
+| 未来方向 | `FUTURE_WORK.md` |
+
+## 7. 常见风险
+
+- 仅凭一个终点观测同时估计两个参数，问题可能存在不可辨识性；应通过损失地形和多组实验说明这一点。
+- 网格搜索的结果依赖搜索范围与网格密度，需分别报告两者。
+- 牛顿法对初值和海森矩阵条件较敏感，需要阻尼、投影或失败检测。
+- CPU 与 CUDA 的浮点计算顺序不同，验证时应使用合理容差，而不是要求逐元素完全相同。
+- 解析解、数值积分和实验数据必须明确区分，避免用同一实现同时生成和验证数据。

@@ -182,7 +182,7 @@ cmake --build build --parallel
 ## 技术文档
 
 ### 实现指南
-- **[IMPLEMENTATION_GUIDE.md](./IMPLEMENTATION_GUIDE.md)**：详细算法、伪代码、验证方法
+- **[IMPLEMENTATION_GUIDE.md](./IMPLEMENTATION_GUIDE.md)**：实现范围、模块大纲、开发顺序与验收标准
   - 正向求解算法（CPU/CUDA）
   - 常数参数解析导数推导
   - 网格搜索 vs 牛顿法对比

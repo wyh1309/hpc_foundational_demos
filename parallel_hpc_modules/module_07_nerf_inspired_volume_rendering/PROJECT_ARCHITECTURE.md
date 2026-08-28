@@ -4,7 +4,7 @@
 module_07_nerf_inspired_volume_rendering/
 │
 ├── README.md                          # 主文档（严格区分A/B）
-├── IMPLEMENTATION_GUIDE.md            # 技术实现指南（A方案详细）
+├── IMPLEMENTATION_GUIDE.md            # 技术实现大纲（A方案）
 ├── FUTURE_WORK.md                     # 理论展望（B方案纯理论）
 ├── CMakeLists.txt                     # 根CMake
 │
