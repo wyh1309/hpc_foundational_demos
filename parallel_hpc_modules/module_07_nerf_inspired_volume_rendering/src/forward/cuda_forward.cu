@@ -1,4 +1,5 @@
 #include "cuda_forward.cuh"
+#include "transport_step.hpp"
 
 __global__ void volume_transport_kernel(
     const float* sigma,
@@ -16,15 +17,9 @@ __global__ void volume_transport_kernel(
         float I = initial_intensity[ray];
         for (int sample = 0; sample < num_samples; ++sample) {
             const float sigma_i = sigma[offset + sample];
-            const float tau = sigma_i * ds;
-            const float q_i = source[offset + sample];
-            if (fabsf(tau) < 1e-5f) {
-                I += q_i * ds - I * tau;
-            } else {
-                const float one_minus_T = -expm1f(-tau);
-                I = I * (1.0f - one_minus_T)
-                    + (q_i / sigma_i) * one_minus_T;
-            }
+            const float source_i = source[offset + sample];
+            I = transport_detail::transport_step(
+                I, sigma_i, source_i, ds);
         }
         output[ray] = I;
     }

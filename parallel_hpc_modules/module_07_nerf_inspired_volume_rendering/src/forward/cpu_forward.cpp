@@ -1,24 +1,20 @@
 #include "cpu_forward.hpp"
+#include "transport_step.hpp"
 #include <cmath>
 
 namespace {
 
 float solve_one_ray(
     const float* sigma,
-    const float* q,
+    const float* source,
     int num_samples,
     float ds,
     float I0)
 {
     float I = I0;
     for (int i = 0; i < num_samples; ++i) {
-        const float tau = sigma[i] * ds;
-        if (std::fabs(tau) < 1e-5f) {
-            I += q[i] * ds - I * tau;
-        } else {
-            const float one_minus_T = -std::expm1(-tau);
-            I = I * (1.0f - one_minus_T) + (q[i] / sigma[i]) * one_minus_T;
-        }
+        I = transport_detail::transport_step(
+            I, sigma[i], source[i], ds);
     }
     return I;
 }
@@ -27,12 +23,12 @@ float solve_one_ray(
 
 float solve_transport_cpu(
     const float* sigma,
-    const float* q,
+    const float* source,
     int num_samples,
     float ds,
     float I0)
 {
-    return solve_one_ray(sigma, q, num_samples, ds, I0);
+    return solve_one_ray(sigma, source, num_samples, ds, I0);
 }
 
 void solve_transport_cpu_multi(
