@@ -12,6 +12,7 @@ add_library(forward_solver STATIC ${FORWARD_SOURCES})
 target_include_directories(forward_solver PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/forward
 )
 set_target_properties(forward_solver PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
@@ -38,6 +39,11 @@ if(BUILD_DEMOS)
         file(SIZE "${CMAKE_CURRENT_SOURCE_DIR}/${source}" source_size)
         if(source_size GREATER 0)
             add_executable(${target} ${source})
+            target_include_directories(${target} PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/../include
+                ${CMAKE_CURRENT_SOURCE_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/forward
+            )
             target_link_libraries(${target} PRIVATE ${library})
             set_target_properties(${target} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
         else()
