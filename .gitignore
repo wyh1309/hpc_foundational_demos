@@ -47,4 +47,4 @@ Thumbs.db
 
 # Temporary benchmark data
 *.csv
-*.txt.tmp
+*.txt

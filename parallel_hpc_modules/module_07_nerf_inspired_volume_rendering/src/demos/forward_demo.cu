@@ -177,7 +177,7 @@ bool cuda_forward(int num_rays, int num_samples, float ds, cudaStream_t stream)
     free(h_ref_cpu);
     free(h_sigma);
     free(h_source);
-    return pass ? EXIT_SUCCESS : EXIT_FAILURE;
+    return pass;
 }
 
 int main(int argc, char** argv)

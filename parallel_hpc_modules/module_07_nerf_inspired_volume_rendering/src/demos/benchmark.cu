@@ -96,7 +96,7 @@ Timings benchmark_case(int num_rays, int num_samples,
     for (int i = 0; i < warmup_iterations; ++i) {
         CHECK_CUDA(launch_volume_transport_cuda(
             d_sigma, d_source, d_output, num_rays, num_samples,
-            ds, d_initial_intensity));
+            ds, d_initial_intensity,0));
     }
     CHECK_CUDA(cudaDeviceSynchronize());
 
@@ -116,7 +116,7 @@ Timings benchmark_case(int num_rays, int num_samples,
         CHECK_CUDA(cudaEventRecord(start));
         CHECK_CUDA(launch_volume_transport_cuda(
             d_sigma, d_source, d_output, num_rays, num_samples,
-            ds, d_initial_intensity));
+            ds, d_initial_intensity,0));
         CHECK_CUDA(cudaEventRecord(stop));
         CHECK_CUDA(cudaEventSynchronize(stop));
         total.kernel_ms += elapsed_ms(start, stop);
@@ -138,7 +138,7 @@ Timings benchmark_case(int num_rays, int num_samples,
                               ray_bytes, cudaMemcpyHostToDevice));
         CHECK_CUDA(launch_volume_transport_cuda(
             d_sigma, d_source, d_output, num_rays, num_samples,
-            ds, d_initial_intensity));
+            ds, d_initial_intensity,0));
         CHECK_CUDA(cudaMemcpy(h_output.data(), d_output, ray_bytes,
                               cudaMemcpyDeviceToHost));
         CHECK_CUDA(cudaEventRecord(stop));
@@ -205,8 +205,9 @@ int main(int argc, char** argv) {
 
     std::cout << std::fixed << std::setprecision(6);
     std::cout << "num_rays,num_samples,warmup,iterations,h2d_ms,kernel_ms,d2h_ms,"
-                 "end_to_end_ms,cpu_ms,speedup_kernel_samples_millions,"
-                 "h2d_gbps,d2h_gbps,device_memory_mib,max_abs_error\n";
+                 "end_to_end_ms,cpu_ms,speedup_end_to_end,"
+                 "samples_per_second_millions,h2d_gbps,d2h_gbps,"
+                 "device_memory_mib,max_abs_error\n";
 
     // Fixed samples, increasing rays and fixed rays, increasing samples.
     const std::vector<std::pair<int, int>> cases = {

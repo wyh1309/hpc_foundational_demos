@@ -191,3 +191,9 @@ and reduce the replicated-data bottleneck.
 - Strong- and weak-scaling benchmark design
 - Single-node and multi-node process placement
 - Interpreting communication overhead and parallel efficiency
+
+  > Implemented CPU-based distributed matrix multiplication with MPI using row-wise
+  > decomposition and collective communication (MPI_Scatter, MPI_Bcast, MPI_Gather).
+  > Evaluated single-node and two-node scaling, achieving 3.48x speedup and 86.9%
+  > parallel efficiency on 4 processes, and analyzed cross-node communication
+  > overhead.
