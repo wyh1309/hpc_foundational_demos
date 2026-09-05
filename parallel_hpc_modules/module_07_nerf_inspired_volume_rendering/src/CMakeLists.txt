@@ -52,10 +52,11 @@ if(BUILD_DEMOS)
     endfunction()
 
     add_demo_if_ready(forward_demo demos/forward_demo.cu forward_solver)
+    add_demo_if_ready(improved_demo demos/improved_demo.cu forward_solver)
     add_demo_if_ready(inverse_demo demos/inverse_demo.cu inverse_solver)
     add_demo_if_ready(benchmark demos/benchmark.cu forward_solver)
 
-    foreach(demo_target forward_demo inverse_demo benchmark)
+    foreach(demo_target forward_demo improved_demo inverse_demo benchmark)
         if(TARGET ${demo_target})
             install(TARGETS ${demo_target} RUNTIME DESTINATION bin)
         endif()
